@@ -4,8 +4,6 @@ ASP.NET Core Web API (.NET 10) + Entity Framework Core + SQL Server 2022, with a
 
 ## Screenshots
 
-> Replace the image paths below with your actual screenshot files after uploading them to the `screenshots/` folder.
-
 | Login | Admin Dashboard | 
 |-------|-----------------|
 | ![Login](screenshots/login.png) | ![Admin Dashboard](screenshots/admin-dashboard.png) | 
