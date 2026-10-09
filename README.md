@@ -2,6 +2,14 @@
 
 ASP.NET Core Web API (.NET 10) + Entity Framework Core + SQL Server 2022, with a small HTML/CSS/JS frontend served from `wwwroot`.
 
+## Screenshots
+
+> Replace the image paths below with your actual screenshot files after uploading them to the `screenshots/` folder.
+
+| Login | Admin Dashboard | 
+|-------|-----------------|
+| ![Login](screenshots/login.png) | ![Admin Dashboard](screenshots/admin-dashboard.png) | 
+
 ## Run
 1. Install .NET 10 SDK and SQL Server 2022 (or SQL Express / LocalDB).
 2. Edit `ConnectionStrings:DefaultConnection` in `appsettings.json` if your server is not `localhost` with Windows auth.
