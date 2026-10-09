@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Employee Leave Management</title>
+<style>
+:root{--bg:#f4f6fa;--card:#fff;--ink:#1d2433;--mute:#667085;--line:#e4e7ec;--pri:#2f5bea;--ok:#12805c;--bad:#c0392b;--warn:#b7791f}
+@media (prefers-color-scheme:dark){:root{--bg:#10141c;--card:#181e2a;--ink:#e8ecf4;--mute:#98a2b3;--line:#2a3243;--pri:#6c8cff;--ok:#3ecf9a;--bad:#ff7a6b;--warn:#f0b957}}
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+h1{font-size:18px;margin:0}h3{margin:22px 0 10px}
+nav{display:flex;gap:6px;flex-wrap:wrap;padding:12px 20px}
+nav button{background:var(--card);color:var(--ink);border:1px solid var(--line);padding:7px 14px;border-radius:8px;cursor:pointer}
+nav button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+main{padding:0 20px 40px;max-width:1100px;margin:auto}
+.card,table{background:var(--card);border:1px solid var(--line);border-radius:10px}
+.card{padding:16px}table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}th{color:var(--mute);font-weight:600;font-size:13px}tr:last-child td{border-bottom:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat b{display:block;font-size:28px}.stat span{color:var(--mute)}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+label{display:flex;flex-direction:column;font-size:13px;color:var(--mute);gap:4px}
+input,select,textarea{padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.btn{background:var(--pri);color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer}
+.btn.sm{padding:4px 10px;font-size:13px;margin-right:4px}.btn.ok{background:var(--ok)}.btn.bad{background:var(--bad)}.btn.gray{background:var(--mute)}
+.tag{padding:2px 9px;border-radius:99px;font-size:12px;border:1px solid currentColor}
+.Pending{color:var(--warn)}.Approved{color:var(--ok)}.Rejected,.Cancelled{color:var(--bad)}
+#login{max-width:340px;margin:12vh auto;padding:0 16px}#login form{grid-template-columns:1fr}
+.err{color:var(--bad);margin-top:8px;min-height:20px}.empty{color:var(--mute);padding:12px}
+.scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<div id="login">
+  <div class="card">
+    <h1>Employee Leave Management</h1><p style="color:var(--mute)">Sign in to continue</p>
+    <form onsubmit="return doLogin(event)">
+      <label>Username<input name="u" required autofocus></label>
+      <label>Password<input name="p" type="password" required></label>
+      <button class="btn">Login</button>
+    </form>
+    <div class="err" id="lerr"></div>
+    <p style="font-size:12px;color:var(--mute)">Demo: admin / Admin@123 &middot; manager / Manager@123 &middot; gowri / Employee@123</p>
+  </div>
+</div>
+<div id="app" hidden>
+  <header><h1>Employee Leave Management</h1>
+    <div><span id="who"></span> <button class="btn sm gray" onclick="logout()">Logout</button></div></header>
+  <nav id="nav"></nav>
+  <main id="view"></main>
+</div>
+<script>
+let token=localStorage.getItem('token'), me=JSON.parse(localStorage.getItem('me')||'null'), cur='';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cell=c=>c&&c.html!==undefined?c.html:esc(c);
+const table=(h,rows)=>rows.length?`<div class="scroll"><table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${rows.map(r=>`<tr>${r.map(c=>`<td>${cell(c)}</td>`).join('')}</tr>`).join('')}</table></div>`:'<div class="card empty">Nothing to show.</div>';
+const tag=s=>({html:`<span class="tag ${esc(s)}">${esc(s)}</span>`});
+const fmt=d=>new Date(d).toLocaleString();
+async function api(path,opts={}){
+  const r=await fetch('/api/'+path,{method:opts.method||'GET',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:opts.body?JSON.stringify(opts.body):undefined});
+  if(r.status===401&&path!=='auth/login'){logout();throw new Error('Session expired');}
+  if(r.status===403)throw new Error('Not allowed');
+  const t=await r.text(), d=t?JSON.parse(t):null;
+  if(!r.ok)throw new Error(d?.message||(d?.errors?Object.values(d.errors)[0][0]:d?.title)||'Request failed');
+  return d;
+}
+const act=async fn=>{try{await fn()}catch(e){alert(e.message)}};
+async function doLogin(e){e.preventDefault();const f=new FormData(e.target);
+  try{const r=await api('auth/login',{method:'POST',body:{username:f.get('u'),password:f.get('p')}});
+    token=r.token;me=r;localStorage.setItem('token',token);localStorage.setItem('me',JSON.stringify(me));start();
+  }catch(x){document.getElementById('lerr').textContent=x.message}return false}
+function logout(){localStorage.clear();token=null;me=null;location.reload()}
+
+const tabs={
+  Employee:[['apply','Apply Leave'],['myLeaves','My Leaves'],['notifications','Notifications']],
+  Manager:[['approvals','Approvals'],['team','Team Leaves'],['apply','Apply Leave'],['myLeaves','My Leaves'],['notifications','Notifications']],
+  Admin:[['dashboard','Dashboard'],['employees','Employees'],['departments','Departments'],['leaveTypes','Leave Types'],['approvals','Approvals'],['team','All Leaves'],['users','Users'],['apply','Apply Leave'],['myLeaves','My Leaves'],['notifications','Notifications']]
+};
+function start(){
+  document.getElementById('login').hidden=true;document.getElementById('app').hidden=false;
+  document.getElementById('who').textContent=`${me.fullName} (${me.role})`;
+  const t=tabs[me.role];document.getElementById('nav').innerHTML=t.map(([k,l])=>`<button id="t-${k}" onclick="show('${k}')">${l}</button>`).join('');
+  show(t[0][0]);
+}
+async function show(k){cur=k;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.id==='t-'+k));
+  const v=document.getElementById('view');v.innerHTML='<p class="empty">Loading...</p>';
+  try{v.innerHTML=await views[k]()}catch(e){v.innerHTML=`<p class="err">${esc(e.message)}</p>`}}
+
+const leaveRows=(L,actions)=>L.map(l=>[l.employeeName,l.leaveType,`${l.fromDate} to ${l.toDate}`,l.days,l.reason,tag(l.status),l.approvedByName||'-',...(actions?[actions(l)]:[])]);
+const leaveHead=['Employee','Type','Dates','Days','Reason','Status','Decided by'];
+
+const views={
+  async dashboard(){
+    const [d,r]=await Promise.all([api('admin/dashboard'),api('admin/reports')]);
+    const s=(n,l)=>`<div class="card stat"><b>${n}</b><span>${l}</span></div>`;
+    return `<h3>Overview</h3><div class="grid">${s(d.employees,'Active employees')}${s(d.departments,'Departments')}${s(d.pending,'Pending')}${s(d.approved,'Approved')}${s(d.rejected,'Rejected')}${s(d.onLeave,'On leave today')}</div>
+    <h3>Approved leave days by department (this year)</h3>${table(['Department','Days'],r.departmentWise.map(x=>[x.name,x.value]))}
+    <h3>Leave requests per month (this year)</h3>${table(['Month','Requests'],r.monthly.map(x=>[x.name,x.value]))}`;
+  },
+  async employees(){
+    const [E,D]=await Promise.all([api('employee'),api('department')]);
+    const mgr=E.filter(e=>e.isActive).map(e=>`<option value="${e.employeeId}">${esc(e.firstName+' '+e.lastName)}</option>`).join('');
+    return `<h3>Add Employee</h3><div class="card"><form onsubmit="return addEmp(event)">
+      <label>Code<input name="code" required></label><label>First name<input name="fn" required></label><label>Last name<input name="ln" required></label>
+      <label>Email<input name="email" type="email" required></label><label>Phone<input name="phone"></label>
+      <label>Department<select name="dep">${D.map(d=>`<option value="${d.departmentId}">${esc(d.departmentName)}</option>`).join('')}</select></label>
+      <label>Designation<input name="des" required></label><label>Joining date<input name="jd" type="date" required></label>
+      <label>Manager<select name="mgr"><option value="">None</option>${mgr}</select></label>
+      <label>Username<input name="un" required></label><label>Password<input name="pw" type="password" minlength="6" required></label>
+      <label>Role<select name="role"><option>Employee</option><option>Manager</option><option>Admin</option></select></label>
+      <button class="btn" style="align-self:end">Add</button></form></div>
+      <h3>Employees</h3><div class="card" style="margin-bottom:10px"><label>Search<input oninput="searchEmp(this.value)" placeholder="code, name or email"></label></div>
+      <div id="emptable">${empTable(E)}</div>`;
+  },
+  async departments(){
+    const D=await api('department');
+    return `<h3>Add Department</h3><div class="card"><form onsubmit="return addDep(event)"><label>Name<input name="n" required></label><label>Description<input name="d"></label><button class="btn" style="align-self:end">Add</button></form></div>
+    <h3>Departments</h3>${table(['Name','Description','Employees',''],D.map(d=>[d.departmentName,d.description||'',d.employeeCount,{html:`<button class="btn sm bad" onclick="delDep(${d.departmentId})">Delete</button>`}]))}`;
+  },
+  async leaveTypes(){
+    const T=await api('leave/types');
+    return `<h3>Add Leave Type / Policy</h3><div class="card"><form onsubmit="return addType(event)"><label>Name<input name="n" required></label><label>Days per year<input name="m" type="number" min="1" required></label><button class="btn" style="align-self:end">Add</button></form></div>
+    <h3>Leave Types</h3>${table(['Name','Days / year',''],T.map(t=>[t.name,t.maxDaysPerYear,{html:`<button class="btn sm" onclick="editType(${t.leaveTypeId},'${esc(t.name).replace(/'/g,'')}',${t.maxDaysPerYear})">Edit</button>`}]))}`;
+  },
+  async users(){
+    const U=await api('admin/users');
+    return `<h3>Users</h3>${table(['Username','Employee','Role','Active',''],U.map(u=>[u.username,u.employeeName,u.role,u.isActive?'Yes':'No',{html:`<select onchange="setRole(${u.userId},this.value)">${['Employee','Manager','Admin'].map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select>`}]))}`;
+  },
+  async apply(){
+    const [T,B]=await Promise.all([api('leave/types'),api('leave/balance')]);
+    return `<h3>My Leave Balance</h3>${table(['Leave type','Used','Total','Remaining'],B.map(b=>[b.leaveType,b.usedDays,b.totalDays,b.remainingDays]))}
+    <h3>Apply for Leave</h3><div class="card"><form onsubmit="return applyLeave(event)">
+      <label>Type<select name="t">${T.map(t=>`<option value="${t.leaveTypeId}">${esc(t.name)}</option>`).join('')}</select></label>
+      <label>From<input name="from" type="date" required></label><label>To<input name="to" type="date" required></label>
+      <label>Reason<input name="reason" required maxlength="500"></label><button class="btn" style="align-self:end">Submit</button></form>
+      <p style="color:var(--mute);font-size:13px;margin-bottom:0">Weekends are not counted.</p></div>`;
+  },
+  async myLeaves(){
+    const L=await api('leave/my');
+    return `<h3>My Leave History</h3>${table(leaveHead.concat(['']),leaveRows(L,l=>l.status==='Pending'?{html:`<button class="btn sm bad" onclick="cancelLeave(${l.leaveId})">Cancel</button>`}:''))}`;
+  },
+  async approvals(){
+    const L=await api('leave/pending');
+    return `<h3>Pending Requests</h3>${table(leaveHead.concat(['']),leaveRows(L,l=>({html:`<button class="btn sm ok" onclick="decide(${l.leaveId},'approve')">Approve</button><button class="btn sm bad" onclick="decide(${l.leaveId},'reject')">Reject</button>`})))}`;
+  },
+  async team(){
+    const L=await api('leave/team');
+    return `<h3>Leave History</h3>${table(leaveHead,leaveRows(L))}`;
+  },
+  async notifications(){
+    const N=await api('leave/notifications');await api('leave/notifications/read',{method:'POST'});
+    return `<h3>Notifications</h3>${table(['Message','When'],N.map(n=>[{html:(n.isRead?'':'<b>NEW</b> ')+esc(n.message)},fmt(n.createdAt)]))}`;
+  }
+};
+const empTable=E=>table(['Code','Name','Email','Department','Designation','Active',''],E.map(e=>[e.employeeCode,e.firstName+' '+e.lastName,e.email,e.departmentName,e.designation,e.isActive?'Yes':'No',
+  {html:`<button class="btn sm gray" onclick="setActive(${e.employeeId},${!e.isActive})">${e.isActive?'Deactivate':'Activate'}</button><button class="btn sm bad" onclick="delEmp(${e.employeeId})">Delete</button>`}]));
+let st;const searchEmp=q=>{clearTimeout(st);st=setTimeout(()=>act(async()=>{document.getElementById('emptable').innerHTML=empTable(await api('employee?search='+encodeURIComponent(q)))}),300)};
+const addEmp=e=>{e.preventDefault();const f=new FormData(e.target);act(async()=>{await api('employee',{method:'POST',body:{employeeCode:f.get('code'),firstName:f.get('fn'),lastName:f.get('ln'),email:f.get('email'),phone:f.get('phone')||null,departmentId:+f.get('dep'),designation:f.get('des'),joiningDate:f.get('jd'),managerId:f.get('mgr')?+f.get('mgr'):null,username:f.get('un'),password:f.get('pw'),role:f.get('role')}});show(cur)});return false};
+const setActive=(id,a)=>act(async()=>{await api(`employee/${id}/status?active=${a}`,{method:'PATCH'});show(cur)});
+const delEmp=id=>confirm('Delete this employee?')&&act(async()=>{await api('employee/'+id,{method:'DELETE'});show(cur)});
+const addDep=e=>{e.preventDefault();const f=new FormData(e.target);act(async()=>{await api('department',{method:'POST',body:{departmentName:f.get('n'),description:f.get('d')||null}});show(cur)});return false};
+const delDep=id=>confirm('Delete department?')&&act(async()=>{await api('department/'+id,{method:'DELETE'});show(cur)});
+const addType=e=>{e.preventDefault();const f=new FormData(e.target);act(async()=>{await api('admin/leave-types',{method:'POST',body:{name:f.get('n'),maxDaysPerYear:+f.get('m')}});show(cur)});return false};
+const editType=(id,n,m)=>{const name=prompt('Name',n);if(!name)return;const days=prompt('Days per year',m);if(!days)return;act(async()=>{await api('admin/leave-types/'+id,{method:'PUT',body:{name,maxDaysPerYear:+days}});show(cur)})};
+const setRole=(id,role)=>act(async()=>{await api(`admin/users/${id}/role`,{method:'PUT',body:{role}});show(cur)});
+const applyLeave=e=>{e.preventDefault();const f=new FormData(e.target);act(async()=>{await api('leave/apply',{method:'POST',body:{leaveTypeId:+f.get('t'),fromDate:f.get('from'),toDate:f.get('to'),reason:f.get('reason')}});show('myLeaves')});return false};
+const cancelLeave=id=>confirm('Cancel this request?')&&act(async()=>{await api(`leave/${id}/cancel`,{method:'POST'});show(cur)});
+const decide=(id,what)=>{const c=prompt('Comment (optional)');if(c===null)return;act(async()=>{await api(`leave/${id}/${what}`,{method:'POST',body:{comment:c||null}});show(cur)})};
+
+if(token&&me)start();
+</script>
+</body>
+</html>
